@@ -35,10 +35,18 @@ async def proxy_request(request: Request, target_url: str, target_name: str) -> 
             headers=request.headers,
             content=await request.body(),
         )
+
+        # не переносим автоматически все заголовки
+        # убираем 'content-length' и 'transfer-encoding'
+        headers = {
+            k: v for k, v in resp.headers.items()
+            if k.lower() not in ("content-length", "transfer-encoding", "connection")
+        }
+        
         return Response(
             content=resp.content,
             status_code=resp.status_code,
-            headers=dict(resp.headers),
+            headers=headers,
         )
 
 
