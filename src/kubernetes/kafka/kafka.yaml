@@ -1,11 +1,14 @@
+{{- if .Values.kafka.enabled }}
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: zookeeper
-  namespace: cinemaabyss
+  namespace: {{ .Values.global.namespace }}
   labels:
     app: zookeeper
+    app.kubernetes.io/name: {{ include "cinemaabyss.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
 spec:
   ports:
   - port: 2181
@@ -17,26 +20,36 @@ spec:
   selector:
     app: zookeeper
 ---
+{{- if .Values.zookeeper.persistence.enabled }}
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: zookeeper-data
-  namespace: cinemaabyss
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: zookeeper
+    app.kubernetes.io/name: {{ include "cinemaabyss.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
 spec:
   accessModes:
-    - ReadWriteOnce
+    - {{ .Values.zookeeper.persistence.accessMode }}
   resources:
     requests:
-      storage: 1Gi
+      storage: {{ .Values.zookeeper.persistence.size }}
+{{- end }}
 ---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: zookeeper
-  namespace: cinemaabyss
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: zookeeper
+    app.kubernetes.io/name: {{ include "cinemaabyss.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
 spec:
   serviceName: zookeeper
-  replicas: 1
+  replicas: {{ .Values.zookeeper.replicas }}
   selector:
     matchLabels:
       app: zookeeper
@@ -47,7 +60,8 @@ spec:
     spec:
       containers:
       - name: zookeeper
-        image: wurstmeister/zookeeper
+        image: {{ .Values.zookeeper.image.repository }}:{{ .Values.zookeeper.image.tag }}
+        imagePullPolicy: {{ .Values.zookeeper.image.pullPolicy }}
         ports:
         - containerPort: 2181
           name: client
@@ -56,12 +70,7 @@ spec:
         - containerPort: 3888
           name: leader-election
         resources:
-          requests:
-            memory: "256Mi"
-            cpu: "100m"
-          limits:
-            memory: "512Mi"
-            cpu: "500m"
+          {{- toYaml .Values.zookeeper.resources | nindent 10 }}
         env:
         - name: ZOOKEEPER_CLIENT_PORT
           value: "2181"
@@ -80,18 +89,26 @@ spec:
             port: 2181
           initialDelaySeconds: 30
           periodSeconds: 15
+      {{- if .Values.zookeeper.persistence.enabled }}
       volumes:
       - name: zookeeper-data
         persistentVolumeClaim:
           claimName: zookeeper-data
+      {{- else }}
+      volumes:
+      - name: zookeeper-data
+        emptyDir: {}
+      {{- end }}
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: kafka
-  namespace: cinemaabyss
+  namespace: {{ .Values.global.namespace }}
   labels:
     app: kafka
+    app.kubernetes.io/name: {{ include "cinemaabyss.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
 spec:
   ports:
   - port: 9092
@@ -99,26 +116,36 @@ spec:
   selector:
     app: kafka
 ---
+{{- if .Values.kafka.persistence.enabled }}
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: kafka-data
-  namespace: cinemaabyss
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: kafka
+    app.kubernetes.io/name: {{ include "cinemaabyss.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
 spec:
   accessModes:
-    - ReadWriteOnce
+    - {{ .Values.kafka.persistence.accessMode }}
   resources:
     requests:
-      storage: 5Gi
+      storage: {{ .Values.kafka.persistence.size }}
+{{- end }}
 ---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: kafka
-  namespace: cinemaabyss
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: kafka
+    app.kubernetes.io/name: {{ include "cinemaabyss.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
 spec:
   serviceName: kafka
-  replicas: 1
+  replicas: {{ .Values.kafka.replicas }}
   selector:
     matchLabels:
       app: kafka
@@ -129,17 +156,13 @@ spec:
     spec:
       containers:
       - name: kafka
-        image: wurstmeister/kafka:2.13-2.7.0
+        image: {{ .Values.kafka.image.repository }}:{{ .Values.kafka.image.tag }}
+        imagePullPolicy: {{ .Values.kafka.image.pullPolicy }}
         ports:
         - containerPort: 9092
           name: kafka
         resources:
-          requests:
-            memory: "512Mi"
-            cpu: "200m"
-          limits:
-            memory: "1Gi"
-            cpu: "1000m"
+          {{- toYaml .Values.kafka.resources | nindent 10 }}
         env:
         - name: KAFKA_ADVERTISED_LISTENERS
           value: PLAINTEXT://kafka:9092
@@ -150,7 +173,7 @@ spec:
         - name: KAFKA_ZOOKEEPER_CONNECT
           value: zookeeper:2181
         - name: KAFKA_CREATE_TOPICS
-          value: "movie-events:1:1,user-events:1:1,payment-events:1:1"
+          value: "{{ range $i, $topic := .Values.kafka.topics }}{{ if $i }},{{ end }}{{ $topic.name }}:{{ $topic.partitions }}:{{ $topic.replicationFactor }}{{ end }}"
         - name: KAFKA_AUTO_CREATE_TOPICS_ENABLE
           value: "true"
         - name: KAFKA_BROKER_ID
@@ -170,7 +193,14 @@ spec:
             port: 9092
           initialDelaySeconds: 60
           periodSeconds: 20
+      {{- if .Values.kafka.persistence.enabled }}
       volumes:
       - name: kafka-data
         persistentVolumeClaim:
           claimName: kafka-data
+      {{- else }}
+      volumes:
+      - name: kafka-data
+        emptyDir: {}
+      {{- end }}
+{{- end }}
