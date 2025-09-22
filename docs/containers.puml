@@ -1,0 +1,112 @@
+@startuml "Кинобездна - To-Be архитектура (C4 контейнеры)"
+
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+Person(customer, "Customer", "End user of the platform.")
+
+System_Boundary(kino_boundary, "System Cinema Abbys") {
+  System_Boundary(frontend_layer, "Frontend Layer") {
+    Container(web_app, "WEB Application", "React", "WEB Client")
+    Container(mobile_app, "Mobile Application", "Flutter", "Mobile Client")
+    Container(tv_app, "Smart TV Application", "React", "Smart TV Client")
+
+    Container(web_bff, "WEB BFF", "Go, REST", "WEB clients backend-for-frontend")
+    Container(mobile_bff, "Mobile BFF", "Go, REST", "mobile clients backend-for-frontend")
+    Container(tv_bff, "Smart TV BFF", "Go, REST", "smart TV clients backend-for-frontend")
+
+    Rel(web_app, web_bff, "Application-specific BFF")
+    Rel(mobile_app, mobile_bff, "Application-specific BFF")
+    Rel(tv_app, tv_bff, "Application-specific BFF")
+  }
+
+  Person(admin, "Administrator", "System administrator.")
+
+  System_Boundary(backend_layer, "Backend Layer") {
+    Container(api_gateway, "API Gateway", "Go, REST", "Единая точка входа, маршрутизация, авторизация")
+    BiRel(web_bff, api_gateway, "API Call")
+    BiRel(mobile_bff, api_gateway, "API Call")
+    BiRel(tv_bff, api_gateway, "API Call")
+
+    Container(kafka, "Kafka", "Брокер сообщений", "Асинхронная коммуникация между сервисами")
+    
+    System_Boundary(user_service_bondary, "User Service") {
+      Container(user_service, "User Service")
+      ContainerDb(user_db, "User DB", "PostgresSQL", "Информация о пользователях")
+      BiRel(user_service, user_db, "Read/Write")
+    }
+
+    System_Boundary(payment_service_bondary, "Payment Service") {
+      Container(payment_service, "Payment Service")
+      ContainerDb(payment_db, "Payment DB", "PostgresSQL", "Информация о платежах")
+      BiRel(payment_service, payment_db, "Read/Write")
+    }
+
+    System_Boundary(subscription_service_bondary, "Subscription Service") {
+      Container(subscription_service, "Subscription Service")
+      ContainerDb(subscription_db, "Subscription DB", "PostgresSQL", "Информация о подписках")
+      BiRel(subscription_service, subscription_db, "Read/Write")
+    }
+
+    System_Boundary(movies_service_bondary, "Movies Service") {
+      Container(movies_service, "Movies Service")
+      Container(s3storage, "S3 Storage", "Хранилище медиаконтента")
+      ContainerDb(movies_db, "Movies DB", "PostgresSQL", "Каталог и метаданные фильмов")
+      BiRel(movies_service, movies_db, "Read/Write")
+      Rel(movies_service, s3storage, "Media content management")
+    }
+
+    System_Boundary(recommendation_service_bondary, "Recommendation Service") {
+      Container(recommend_service, "Recommendation Service")
+    }
+
+    BiRel(api_gateway, user_service, "")
+    BiRel(api_gateway, payment_service, "")
+    BiRel(api_gateway, subscription_service, "")
+    BiRel(api_gateway, movies_service, "")
+    BiRel(api_gateway, recommend_service, "")
+
+    Rel(user_service, kafka, "Publish/Consume")
+    Rel(payment_service, kafka, "Publish/Consume")
+    Rel(subscription_service, kafka, "Publish/Consume")
+    Rel(movies_service, kafka, "Publish/Consume")
+    Rel(recommend_service, kafka, "Publish/Consume")
+  }
+
+  Container(graphana, "Graphana")
+  Container(prometheus, "Prometheus")
+  Rel(graphana, prometheus, "data")
+
+  Rel(kafka, prometheus, "")
+  Rel(user_service, prometheus, "")
+  Rel(payment_service, prometheus,)
+  Rel(subscription_service, prometheus, "")
+  Rel(movies_service, prometheus,)
+  Rel(recommend_service, prometheus,)
+
+}
+
+Container_Ext(cdn, "CDN", "CloudFront/Cloudflare/Akamai", "Кэширует и быстро отдает контент")
+Container_Ext(payment_system, "Платежная система", "", "")  
+Container_Ext(recommendation_system, "Рекоммендательная система", "", "")
+
+
+Rel(payment_service, payment_system, "Payment")
+Rel(recommend_service, recommendation_system, "Async API call")
+
+' Customer flows
+Rel(customer,   web_app, "Using application")
+Rel(customer,   mobile_app, "Using application")
+Rel(customer,   tv_app, "Using application")
+
+' CDN flows
+Rel(s3storage, cdn, "media content")
+Rel(movies_service, cdn, "Выдает URL (обычно CDN-домен)")
+Rel(cdn, web_app, "Content chunks")
+Rel(cdn, mobile_app, "Content chunks")
+Rel(cdn, tv_app, "Content chunks")  
+
+' Admin flow
+Rel(admin, api_gateway,)
+Rel(admin, graphana,)
+
+@enduml
